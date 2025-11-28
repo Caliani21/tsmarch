@@ -103,7 +103,7 @@ radical <- function(X, components = NCOL(X), demean = TRUE, pca_cov = c("ML", "L
     m <- NCOL(X)
     n <- NROW(X)
     if (m > n && trace) warning("\nsignal matrix (X) may be orientated in the wrong way.")
-    pca_cov <- match.arg(pca_cov[3], c("ML", "LW", "EWMA"))
+    pca_cov <- match.arg(pca_cov[2], c("ML", "LW", "EWMA"))
     if (demean) {
         # don't use colMeans...losses accuracy
         mu <- apply(X, 2, mean)
@@ -341,7 +341,7 @@ fastica <- function(X, components = NCOL(X), demean = TRUE, method = "symmetric"
     m <- NCOL(X)
     n <- NROW(X)
     if (m > n) warning("\nsignal matrix (X) may be orientated in the wrong way.")
-    pca_cov <- match.arg(pca_cov[3], c("ML", "LW", "EWMA"))
+    pca_cov <- match.arg(pca_cov[2], c("ML", "LW", "EWMA"))
     method <- match.arg(method[1], c("symmetric","deflation"))
     fun <- match.arg(fun[1], c("pow3", "tanh", "gauss", "skew"))
     stabilization <- as.logical(stabilization)
