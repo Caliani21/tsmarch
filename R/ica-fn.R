@@ -5,6 +5,9 @@
     covariance_matrix <- switch(pca_cov,
                                 "ML" = (t(Y) %*% Y)/dim(Y)[1],
                                 "LW" = lw_covariance(Y, demean = FALSE, trace = trace, ...),
+                                "LIS" = lis_covariance(Y, demean = FALSE, trace = trace, ...),
+                                "QIS" = qis_covariance(Y, demean = FALSE, trace = trace, ...),
+                                "GIS" = gis_covariance(Y, demean = FALSE, trace = trace, ...),
                                 "EWMA" = ewma_covariance(Y, demean = FALSE, ...))
     ed <- eigen(covariance_matrix)
     D <- diag(ed$values)
@@ -127,6 +130,181 @@ lw_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     }
     sigma <- shrinkage * prior + (1 - shrinkage) * sample_covariance
     return(sigma)
+}
+
+# Linear-Inverse Shrinkage (Ledoit & Wolf 2022, Stein's loss)
+lis_covariance <- function(X, k = -1, demean = FALSE, trace) {
+    n_obs <- NROW(X)
+    p <- NCOL(X)
+    
+    # Controle de demean separado de k
+    if (demean) {
+        X <- scale(X, scale = FALSE)
+        if (k < 0) k <- 1  # Descontar grau de liberdade da média
+    } else {
+        if (k < 0) k <- 0  # Dados já centrados externamente
+    }
+    
+    n <- n_obs - k
+    c <- p / n
+    
+    # Sample covariance
+    sample <- (t(X) %*% X) / n
+    sample <- (t(sample) + sample) / 2
+    
+    # Spectral decomposition
+    spectral <- eigen(sample, symmetric = TRUE)
+    lambda <- spectral$values[p:1]
+    u <- spectral$vectors[, p:1]
+    
+    # Smoothing parameter
+    h <- min(c^2, 1/c^2)^0.35 / p^0.35
+    
+    # Inverse eigenvalues
+    invlambda <- 1 / lambda[max(1, p - n + 1):p]
+    
+    # Build Lj matrix (avoid rep.row dependency)
+    Lj <- matrix(rep(invlambda, each = min(p, n)), nrow = min(p, n))
+    Lj.i <- Lj - t(Lj)
+    
+    # Smoothed Stein shrinker
+    theta <- rowMeans(Lj * Lj.i / (Lj.i^2 + h^2 * Lj^2))
+    
+    if (p <= n) {
+        delta <- (1 - c) * invlambda + 2 * c * invlambda * theta
+        deltaLIS <- pmax(delta, min(invlambda))
+    } else {
+        stop("p must be <= n for Stein's loss (LIS)")
+    }
+    
+    # Reconstruct with safeguards
+    deltaLIS_safe <- pmax(deltaLIS, 1e-10)
+    sigmahat <- u %*% diag(1 / deltaLIS_safe) %*% t(u)
+    
+    if (trace) {
+        shrinkage_intensity <- mean(1 / (deltaLIS * lambda[1:length(deltaLIS)]))
+        cat(sprintf("LIS shrinkage intensity: %.4f\n", shrinkage_intensity))
+    }
+    
+    return(sigmahat)
+}
+
+# Quadratic-Inverse Shrinkage (Ledoit & Wolf 2022, Fréchet loss)
+qis_covariance <- function(X, k = -1, demean = FALSE, trace) {
+    n_obs <- NROW(X)
+    p <- NCOL(X)
+    
+    if (demean) {
+        X <- scale(X, scale = FALSE)
+        if (k < 0) k <- 1
+    } else {
+        if (k < 0) k <- 0
+    }
+    
+    n <- n_obs - k
+    c <- p / n
+    
+    sample <- (t(X) %*% X) / n
+    sample <- (t(sample) + sample) / 2
+    
+    spectral <- eigen(sample, symmetric = TRUE)
+    lambda <- spectral$values[p:1]
+    u <- spectral$vectors[, p:1]
+    
+    h <- min(c^2, 1/c^2)^0.35 / p^0.35
+    
+    invlambda <- 1 / lambda[max(1, p - n + 1):p]
+    
+    Lj <- matrix(rep(invlambda, each = min(p, n)), nrow = min(p, n))
+    Lj.i <- Lj - t(Lj)
+    
+    theta <- rowMeans(Lj * Lj.i / (Lj.i^2 + h^2 * Lj^2))
+    Htheta <- rowMeans(Lj * (h * Lj) / (Lj.i^2 + h^2 * Lj^2))
+    Atheta2 <- theta^2 + Htheta^2
+    
+    if (p <= n) {
+        delta <- 1 / ((1 - c)^2 * invlambda + 2 * c * (1 - c) * invlambda * theta +
+                      c^2 * invlambda * Atheta2)
+    } else {
+        # Singular case (unlikely in GO-GARCH context after VAR)
+        delta0 <- 1 / ((c - 1) * mean(invlambda))
+        delta <- c(rep(delta0, p - n), 1 / (invlambda * Atheta2))
+    }
+    
+    # Preserve trace
+    deltaQIS <- delta * (sum(lambda) / sum(delta))
+    
+    # Safeguard against extreme values
+    deltaQIS_safe <- pmax(deltaQIS, 1e-10)
+    deltaQIS_safe <- pmin(deltaQIS_safe, 1e10)
+    
+    sigmahat <- u %*% diag(deltaQIS_safe) %*% t(u)
+    
+    if (trace) {
+        cat(sprintf("QIS condition number: %.2e\n", max(deltaQIS_safe) / min(deltaQIS_safe)))
+    }
+    
+    return(sigmahat)
+}
+
+# Geometric-Inverse Shrinkage (Ledoit & Wolf 2022, symmetrized KL divergence)
+gis_covariance <- function(X, k = -1, demean = FALSE, trace) {
+    n_obs <- NROW(X)
+    p <- NCOL(X)
+    
+    if (demean) {
+        X <- scale(X, scale = FALSE)
+        if (k < 0) k <- 1
+    } else {
+        if (k < 0) k <- 0
+    }
+    
+    n <- n_obs - k
+    c <- p / n
+    
+    sample <- (t(X) %*% X) / n
+    sample <- (t(sample) + sample) / 2
+    
+    spectral <- eigen(sample, symmetric = TRUE)
+    lambda <- spectral$values[p:1]
+    u <- spectral$vectors[, p:1]
+    
+    h <- min(c^2, 1/c^2)^0.35 / p^0.35
+    
+    invlambda <- 1 / lambda[max(1, p - n + 1):p]
+    
+    Lj <- matrix(rep(invlambda, each = min(p, n)), nrow = min(p, n))
+    Lj.i <- Lj - t(Lj)
+    
+    theta <- rowMeans(Lj * Lj.i / (Lj.i^2 + h^2 * Lj^2))
+    Htheta <- rowMeans(Lj * (h * Lj) / (Lj.i^2 + h^2 * Lj^2))
+    Atheta2 <- theta^2 + Htheta^2
+    
+    if (p <= n) {
+        deltaLIS <- (1 - c) * invlambda + 2 * c * invlambda * theta
+        deltaLIS <- pmax(deltaLIS, min(invlambda))
+        
+        deltaQIS <- 1 / ((1 - c)^2 * invlambda + 2 * c * (1 - c) * invlambda * theta +
+                         c^2 * invlambda * Atheta2)
+    } else {
+        stop("p must be <= n for symmetrized Kullback-Leibler divergence (GIS)")
+    }
+    
+    # Geometric mean of LIS and QIS
+    deltaGIS <- sqrt(deltaQIS / deltaLIS)
+    
+    # Safeguards
+    deltaGIS_safe <- pmax(deltaGIS, 1e-10)
+    deltaGIS_safe <- pmin(deltaGIS_safe, 1e10)
+    
+    sigmahat <- u %*% diag(deltaGIS_safe) %*% t(u)
+    
+    if (trace) {
+        cat(sprintf("GIS eigenvalue range: [%.2e, %.2e]\n", 
+                    min(deltaGIS_safe), max(deltaGIS_safe)))
+    }
+    
+    return(sigmahat)
 }
 
 ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
