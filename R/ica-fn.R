@@ -137,53 +137,65 @@ lis_covariance <- function(X, k = -1, demean = FALSE, trace) {
     n_obs <- NROW(X)
     p <- NCOL(X)
     
-    # Controle de demean separado de k
     if (demean) {
         X <- scale(X, scale = FALSE)
-        if (k < 0) k <- 1  # Descontar grau de liberdade da média
+        if (k < 0) k <- 1
     } else {
-        if (k < 0) k <- 0  # Dados já centrados externamente
+        if (k < 0) k <- 0
     }
     
     n <- n_obs - k
     c <- p / n
     
-    # Sample covariance
     sample <- (t(X) %*% X) / n
     sample <- (t(sample) + sample) / 2
     
-    # Spectral decomposition
     spectral <- eigen(sample, symmetric = TRUE)
     lambda <- spectral$values[p:1]
     u <- spectral$vectors[, p:1]
     
-    # Smoothing parameter
     h <- min(c^2, 1/c^2)^0.35 / p^0.35
     
-    # Inverse eigenvalues
     invlambda <- 1 / lambda[max(1, p - n + 1):p]
     
-    # Build Lj matrix (avoid rep.row dependency)
     Lj <- matrix(rep(invlambda, each = min(p, n)), nrow = min(p, n))
     Lj.i <- Lj - t(Lj)
     
-    # Smoothed Stein shrinker
     theta <- rowMeans(Lj * Lj.i / (Lj.i^2 + h^2 * Lj^2))
     
     if (p <= n) {
         delta <- (1 - c) * invlambda + 2 * c * invlambda * theta
         deltaLIS <- pmax(delta, min(invlambda))
+        
+        min_delta <- 1e-6  # evita 1/deltaLIS > 1e6
+        max_delta <- 1e6   # evita 1/deltaLIS < 1e-6
+        
+        deltaLIS <- pmax(deltaLIS, min_delta)
+        deltaLIS <- pmin(deltaLIS, max_delta)
+        
+        eigval_cov <- 1 / deltaLIS
+        
+        cond_number <- max(eigval_cov) / min(eigval_cov)
+        if (cond_number > 1e8) {
+            ridge_target <- max(eigval_cov) / 1e8
+            eigval_cov <- pmax(eigval_cov, ridge_target)
+            
+            if (trace) {
+                cat(sprintf("LIS: condition number reduced from %.2e to %.2e via ridge\n", 
+                            cond_number, max(eigval_cov) / min(eigval_cov)))
+            }
+        }
+        
     } else {
         stop("p must be <= n for Stein's loss (LIS)")
     }
     
-    # Reconstruct with safeguards
-    deltaLIS_safe <- pmax(deltaLIS, 1e-10)
-    sigmahat <- u %*% diag(1 / deltaLIS_safe) %*% t(u)
+    sigmahat <- u %*% diag(eigval_cov) %*% t(u)
     
     if (trace) {
-        shrinkage_intensity <- mean(1 / (deltaLIS * lambda[1:length(deltaLIS)]))
-        cat(sprintf("LIS shrinkage intensity: %.4f\n", shrinkage_intensity))
+        cat(sprintf("LIS eigenvalue range: [%.2e, %.2e], condition: %.2e\n", 
+                    min(eigval_cov), max(eigval_cov), 
+                    max(eigval_cov) / min(eigval_cov)))
     }
     
     return(sigmahat)
