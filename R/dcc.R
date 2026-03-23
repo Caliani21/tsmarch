@@ -2,6 +2,57 @@
 
 # dcc loglik ---------------------------------------------------
 
+.cor2cov_r <- function(r, sigma, m) {
+    slice_n <- dim(r)[3]
+    mat_n <- dim(r)[1]
+    mat_m <- dim(r)[2]
+    n <- mat_m + m
+    
+    v <- array(0, dim = c(mat_n, n, slice_n))
+    lower_indices <- which(lower.tri(matrix(0, m, m)), arr.ind = FALSE)
+    lower_indices_full <- which(lower.tri(matrix(0, m, m), diag = TRUE), arr.ind = FALSE)
+    
+    for (i in 1:slice_n) {
+        for (j in 1:mat_n) {
+            # Reconstruir matriz de correlação
+            C <- matrix(0, m, m)
+            C[lower.tri(C)] <- r[j, , i]
+            C <- C + t(C)
+            diag(C) <- 1
+            
+            s <- diag(sigma[j, , i])
+            V <- s %*% C %*% s
+            
+            v[j, , i] <- V[lower_indices_full]
+        }
+    }
+    return(v)
+}
+
+.cor2cov2_r <- function(r, sigma, m) {
+    slice_n <- dim(sigma)[3]
+    mat_n <- dim(sigma)[1]
+    mat_m <- length(r)
+    n <- mat_m + m
+    
+    v <- array(0, dim = c(mat_n, n, slice_n))
+    lower_indices_full <- which(lower.tri(matrix(0, m, m), diag = TRUE), arr.ind = FALSE)
+    
+    C <- matrix(0, m, m)
+    C[lower.tri(C)] <- as.vector(r)
+    C <- C + t(C)
+    diag(C) <- 1
+    
+    for (i in 1:slice_n) {
+        for (j in 1:mat_n) {
+            s <- diag(sigma[j, , i])
+            V <- s %*% C %*% s
+            v[j, , i] <- V[lower_indices_full]
+        }
+    }
+    return(v)
+}
+
 .dcc_dynamic_loglik <- function(pars, arglist)
 {
     dcc_env <- arglist$dcc_env
@@ -542,7 +593,7 @@
     dims <- c(m, m, n)
     # generate Ht
     # lower tri vector [h x lower_tri_vector x nsim]
-    H <- .cor2cov(R, sim_sigma, n_series)
+    H <- .cor2cov_r(R, sim_sigma, n_series)
     # time varying distribution [mu H shape] [mu R shape]
     out <- list(mu = sim_mu, H = H, R = R, Z = std_residuals,
                 n_series = n_series, nsim = nsim, h = h,
@@ -598,7 +649,7 @@
     for (i in 1:nsim) {
         Ra[,,i] <- matrix(R, ncol = length(R), nrow = h, byrow = TRUE)
     }
-    H <- .cor2cov(Ra, sim_sigma, n_series)
+    H <- .cor2cov_r(Ra, sim_sigma, n_series)
     # time varying distribution [mu H shape] [mu R shape]
     out <- list(mu = sim_mu, H = H, R = R, Z = std_residuals,
                 n_series = n_series, nsim = nsim, h = h,
@@ -700,7 +751,7 @@
     dims <- c(m, m, n)
     # generate Ht
     # lower tri vector [h x lower_tri_vector x nsim]
-    H <- .cor2cov(R, sim_sigma, n_series)
+    H <- .cor2cov_r(R, sim_sigma, n_series)
     out <- list(mu = sim_mu, H = H, R = R, Z = std_residuals, std_noise = std_noise,
                 n_series = n_series, nsim = nsim, h = h,
                 seed = seed, series_names = names(object$spec$univariate),
@@ -770,7 +821,7 @@
     sim_sigma <- aperm(sim_sigma, perm = c(2, 3, 1))
     # generate Ht
     # lower tri vector [h x lower_tri_vector x nsim]
-    H <- .cor2cov2(matrix(rvec, nrow = 1), sim_sigma, n_series)
+    H <- .cor2cov2_r(matrix(rvec, nrow = 1), sim_sigma, n_series)
     # time varying distribution [mu H shape] [mu R shape]
     R <- .lower_tri_matrix(R, diag = FALSE)
     out <- list(mu = sim_mu, H = H, R = R, Z = std_residuals,
