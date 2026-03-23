@@ -1222,7 +1222,7 @@ tscoskew.gogarch.estimate <- function(object, index = NULL, distribution = FALSE
         # convert to moments since the standardized moments do not retain their
         # geometric properties in transformation
         sk <- matrix(sk, ncol = NCOL(sig), nrow = NROW(sig), byrow = TRUE) * sig^3
-        cs <- .gogarch_coskewness(A, sk[index, , drop = FALSE], sig[index, , drop = FALSE]^2, standardize)
+        cs <- .gogarch_coskewness_r(A, sktmp[index,,drop=FALSE], sig[index,,drop=FALSE]^2, standardize)
         if (folded) cs <- fold3d(cs, p = 2)
         return(cs)
     } else {
@@ -1273,7 +1273,7 @@ tscoskew.gogarch.predict <- function(object, index = NULL, distribution = FALSE,
             ica_factors <- length(object$univariate)
             sig <- do.call(cbind, lapply(1:ica_factors, function(j) coredata(object$univariate[[j]]$sigma)))
             sktmp <- matrix(sk, ncol = NCOL(sig), nrow = NROW(sig), byrow = TRUE) * sig^3
-            cs <- .gogarch_coskewness(A, sktmp[index, , drop = FALSE], sig[index, , drop = FALSE]^2, standardize)
+            cs <- .gogarch_coskewness_r(A, sktmp[index,,drop=FALSE], sig[index,,drop=FALSE]^2, standardize)
             if (folded) cs <- fold3d(cs, p = 2)
         } else {
             cs <- array(0, dim = c(n_series, n_series * n_series, N, nsim))
@@ -1395,7 +1395,7 @@ tscokurt.gogarch.estimate <- function(object, index = NULL, distribution = FALSE
         # convert to moments since the standardized moments do not retain their
         # geometric properties in transformation
         ku <- matrix(ku, ncol = NCOL(sig), nrow = NROW(sig), byrow = TRUE) * sig^4
-        ks <- .gogarch_cokurtosis(A, K = ku[index,,drop = FALSE], V = sig[index,,drop = FALSE]^2, standardize)
+        ku <- .gogarch_cokurtosis_r(A, kutmp[index,,drop=FALSE], sig[index,,drop=FALSE]^2, standardize)
         if (folded) ks <- fold3d(ks, p = 3)
         return(ks)
     } else {
@@ -1446,7 +1446,7 @@ tscokurt.gogarch.predict <- function(object, index = NULL, distribution = FALSE,
     if (!distribution) {
         sig <- do.call(cbind, lapply(1:ica_factors, function(j) coredata(object$univariate[[j]]$sigma)))
         kutmp <- matrix(ku, ncol = NCOL(sig), nrow = NROW(sig), byrow = TRUE) * sig^4
-        ks <- .gogarch_cokurtosis(A, kutmp[index, , drop = FALSE], sig[index, , drop = FALSE]^2, standardize)
+        ku <- .gogarch_cokurtosis_r(A, kutmp[index,,drop=FALSE], sig[index,,drop=FALSE]^2, standardize)
         if (folded) ks <- fold3d(ks, p = 3)
     } else {
         ks <- array(0, dim = c(n_series, n_series * n_series * n_series, N, nsim))
