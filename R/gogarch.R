@@ -818,3 +818,67 @@ gogarch_modelspec <- function(y, distribution = c("norm","nig","gh"), model = "g
     return(L)
 }
 
+.gogarch_coskewness_r <- function(A, S, V, standardize) {
+    M <- ncol(A)  # n_series
+    N <- nrow(A)  # k componentes
+    T <- nrow(S)  # horizonte
+    At <- t(A)
+    kronA <- kronecker(A, A)
+    result <- array(0, dim = c(M, M * M, T))
+    for (i in 1:T) {
+        s_row <- S[i, ]
+        # coskewness_block
+        SK <- matrix(0, N, N * N)
+        for (j in 1:N) {
+            indx <- (j-1)*N*N + (j-1)*N + j  # 1-based
+            SK[indx] <- s_row[j]
+        }
+        AV <- At %*% SK
+        r_slice <- AV %*% kronA
+        if (standardize) {
+            s <- sqrt(diag(At %*% diag(V[i,]) %*% A))
+            # coskewness_sigma
+            idx <- expand.grid(0:(M-1), 0:(M-1), 0:(M-1))
+            tmp <- matrix(s[idx[,1]+1] * s[idx[,2]+1] * s[idx[,3]+1], M, M*M)
+            r_slice <- r_slice / tmp
+        }
+        result[,,i] <- r_slice
+    }
+    return(result)
+}
+
+.gogarch_cokurtosis_r <- function(A, K, V, standardize) {
+    M <- ncol(A)
+    N <- nrow(A)
+    T <- nrow(K)
+    At <- t(A)
+    kronA <- kronecker(kronecker(A, A), A)
+    result <- array(0, dim = c(M, M * M * M, T))
+    indices <- 1:N
+    ix <- (indices-1)*N^3 + (indices-1)*N^2 + (indices-1)*N + indices
+    pairs_obj <- tsmarch:::.cokurt_pairs(N)
+    for (i in 1:T) {
+        v_col <- V[i, ]
+        k_col <- K[i, ]
+        # cokurtosis_block
+        z <- rep(0, N^4)
+        z[ix] <- k_col
+        indx <- pairs_obj[[1]]
+        pairs <- pairs_obj[[2]]
+        for (j in 1:nrow(indx)) {
+            value <- v_col[pairs[j,1]] * v_col[pairs[j,2]]
+            z[indx[j,] ] <- value
+        }
+        KU <- matrix(z, N, N^3)
+        AV <- At %*% KU
+        r_slice <- AV %*% kronA
+        if (standardize) {
+            s <- sqrt(diag(At %*% diag(v_col) %*% A))
+            idx4 <- expand.grid(0:(M-1), 0:(M-1), 0:(M-1), 0:(M-1))
+            tmp <- matrix(s[idx4[,1]+1] * s[idx4[,2]+1] * s[idx4[,3]+1] * s[idx4[,4]+1], M, M^3)
+            r_slice <- r_slice / tmp
+        }
+        result[,,i] <- r_slice
+    }
+    return(result)
+}
