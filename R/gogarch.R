@@ -282,7 +282,10 @@ gogarch_modelspec <- function(y, distribution = c("norm","nig","gh"), model = "g
     n <- object$h
     nsim <- object$nsim
     if (is(object, "gogarch.predict")) {
-        sig <- lapply(1:m, function(i) object$univariate[[i]]$sigma_sim)
+        sig <- lapply(1:m, function(i) {
+          sm <- object$univariate[[i]]$sigma_sim
+          matrix(as.numeric(sm), nrow = nrow(sm), ncol = ncol(sm), byrow = FALSE)
+        })         
     } else if (is(object, "gogarch.simulate")) {
         sig <- lapply(1:m, function(i) object$univariate[[i]]$sigma)
     }
@@ -304,7 +307,10 @@ gogarch_modelspec <- function(y, distribution = c("norm","nig","gh"), model = "g
     n <- object$h
     nsim <- object$nsim
     if (is(object, "gogarch.predict")) {
-        sig <- lapply(1:m, function(i) object$univariate[[i]]$sigma_sim)
+        sig <- lapply(1:m, function(i) {
+          sm <- object$univariate[[i]]$sigma_sim
+          matrix(as.numeric(sm), nrow = nrow(sm), ncol = ncol(sm), byrow = FALSE)
+        })  
     } else if (is(object, "gogarch.simulate")) {
         sig <- lapply(1:m, function(i) object$univariate[[i]]$sigma)
     }
@@ -332,7 +338,10 @@ gogarch_modelspec <- function(y, distribution = c("norm","nig","gh"), model = "g
     n <- object$h
     nsim <- object$nsim
     if (is(object, "gogarch.predict")) {
-        sig <- lapply(1:m, function(i) object$univariate[[i]]$sigma_sim)
+        sig <- lapply(1:m, function(i) {
+          sm <- object$univariate[[i]]$sigma_sim
+          matrix(as.numeric(sm), nrow = nrow(sm), ncol = ncol(sm), byrow = FALSE)
+        })  
     } else if (is(object, "gogarch.simulate")) {
         sig <- lapply(1:m, function(i) object$univariate[[i]]$sigma)
     }
@@ -568,7 +577,10 @@ gogarch_modelspec <- function(y, distribution = c("norm","nig","gh"), model = "g
         stop("\nconvolution not required for normal distribution.")
     }
     # no uncertainty for h = 1
-    sig <- lapply(1:m, function(i) object$univariate[[i]]$sigma_sim)
+    sig <- lapply(1:m, function(i) {
+          sm <- object$univariate[[i]]$sigma_sim
+          matrix(as.numeric(sm), nrow = nrow(sm), ncol = ncol(sm), byrow = FALSE)
+    })  
     sig <- array(unlist(sig), dim = c(nsim, n, m))
     sig <- aperm(sig, perm = c(2,3,1))
     mu <- object$mu
