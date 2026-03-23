@@ -1241,6 +1241,17 @@ tscoskew.gogarch.predict <- function(object, index = NULL, distribution = FALSE,
     A <- object$ic$A
     series_names <- object$spec$series_names
     n_series <- object$spec$n_series
+
+    for (.i in seq_along(object$univariate)) {
+        .sm <- object$univariate[[.i]]$sigma_sim
+        if (!is.null(.sm)) {
+            object$univariate[[.i]]$sigma_sim <- matrix(
+                as.numeric(.sm), nrow = nrow(.sm), ncol = ncol(.sm), byrow = FALSE
+            )
+            class(object$univariate[[.i]]$sigma_sim) <- "tsmodel.distribution"
+        }
+    }
+    
     nsim <- NROW(object$univariate[[1]]$sigma_sim)
     h <- NCOL(object$univariate[[1]]$sigma_sim)
     if (!is.null(index)) {
@@ -1407,6 +1418,17 @@ tscokurt.gogarch.predict <- function(object, index = NULL, distribution = FALSE,
     A <- object$ic$A
     series_names <- object$spec$series_names
     n_series <- object$spec$n_series
+
+    for (.i in seq_along(object$univariate)) {
+        .sm <- object$univariate[[.i]]$sigma_sim
+        if (!is.null(.sm)) {
+            object$univariate[[.i]]$sigma_sim <- matrix(
+                as.numeric(.sm), nrow = nrow(.sm), ncol = ncol(.sm), byrow = FALSE
+            )
+            class(object$univariate[[.i]]$sigma_sim) <- "tsmodel.distribution"
+        }
+    }
+    
     nsim <- NROW(object$univariate[[1]]$sigma_sim)
     h <- NCOL(object$univariate[[1]]$sigma_sim)
     if (!is.null(index)) {
