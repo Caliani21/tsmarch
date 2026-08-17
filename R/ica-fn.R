@@ -131,37 +131,45 @@ ls_diag_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
 }
 
 ls_cc_covariance <- function(X, shrink = -1, demean = FALSE, trace = FALSE) {
+  dim_X <- dim(X)
+  N <- dim_X[1]
+  p <- dim_X[2]
   if (demean) {
     X <- scale(X, scale = FALSE)
     k <- 1
   } else {
     k <- 0
   }
-  p <- NCOL(X)
-  n <- NROW(X) - k
+  n <- N - k
   S <- (t(X) %*% X) / n
   s_var <- diag(S)
-  s_std <- sqrt(s_var)
-  s_std[s_std == 0] <- 1e-12 
-  rBar <- (sum(S / outer(s_std, s_std)) - p) / (p * (p - 1))
-  prior <- rBar * outer(s_std, s_std)
+  sqrtvar <- sqrt(s_var)
+  sqrtvar[sqrtvar == 0] <- 1e-12 
+  s_std_mat <- outer(sqrtvar, sqrtvar)
+  rBar <- (sum(S / s_std_mat) - p) / (p * (p - 1))
+  prior <- rBar * s_std_mat
   diag(prior) <- s_var
   if (shrink == -1) {
     X2 <- X^2
     S2 <- (t(X2) %*% X2) / n
     piMat <- S2 - S^2
+    pihat <- sum(piMat)
     gammahat <- sum((S - prior)^2)
+    rho_diag <- sum(diag(piMat))
     term1 <- (t(X^3) %*% X) / n
-    term2 <- t(matrix(s_var, p, p, byrow = TRUE) * S)
+    term2 <- matrix(s_var, nrow = p, ncol = p, byrow = FALSE) * S
     thetaMat <- term1 - term2
     diag(thetaMat) <- 0
-    rhohat <- sum(diag(piMat)) + rBar * sum(outer(1 / s_std, s_std) * thetaMat)
-    shrinkage <- max(0, min(1, ((sum(piMat) - rhohat) / gammahat) / n))
+    rho_off <- rBar * sum(outer(1 / sqrtvar, sqrtvar) * thetaMat)
+    rhohat <- rho_diag + rho_off
+    kappahat <- (pihat - rhohat) / gammahat
+    shrinkage <- max(0, min(1, kappahat / n))
     if (trace) cat(sprintf("LS-CC Shrinkage: %f\n", shrinkage))
   } else {
     shrinkage <- max(0, min(1, shrink))
   }
-  return(shrinkage * prior + (1 - shrinkage) * S)
+  sigmahat <- shrinkage * prior + (1 - shrinkage) * S
+  return(sigmahat)
 }
 
 ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
