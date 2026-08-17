@@ -3,9 +3,13 @@
     old_dimension <- dim(X)[2]
     Y <- X
     covariance_matrix <- switch(pca_cov,
-                                "ML" = (t(Y) %*% Y)/dim(Y)[1],
+                                "Sample" = (t(Y) %*% Y)/dim(Y)[1],
                                 "LS-ID" = ls_id_covariance(Y, demean = FALSE, trace = trace, ...),
-                                "LS-DIAG" = ls_diag_covariance(Y, k = dim(Y)[2] + 1,...),
+                                "LS-CC" = ls_cc_covariance(Y, k = dim(Y)[2] + 1,...),
+                                "LS-MKT" = ls_mkt_covariance(Y, k = dim(Y)[2] + 1,...),
+                                "NLS-GIS" = nls_gis_covariance(Y, k = dim(Y)[2] + 1,...),
+                                "NLS-LIS" = nls_lis_covariance(Y, k = dim(Y)[2] + 1,...),
+                                "NLS-QIS" = nls_qis_covariance(Y, k = dim(Y)[2] + 1,...),
                                 "EWMA" = ewma_covariance(Y, demean = FALSE, ...))
     ed <- eigen(covariance_matrix)
     D <- diag(ed$values)
@@ -101,6 +105,14 @@
     return(list(Z = Z, K = K, L = L))
 }
 
+rep.row <- function(x, n){
+  matrix(rep(x, each = n), nrow = n)
+}
+
+rep.col <- function(x, n){
+  matrix(rep(x, times = n), ncol = n, byrow = F)
+}
+
 ls_id_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     n <- NROW(X)
     m <- NCOL(X)
@@ -130,11 +142,55 @@ ls_id_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     return(sigma)
 }
 
-rep.col <- function(x, n){
-  matrix(rep(x, times = n), ncol = n, byrow = F)
+ls_cc_covariance <- function(X, k = -1) {
+  dim.X <- dim(X)
+  N <- dim.X[1]
+  p <- dim.X[2]
+  if (k < 0) {    # demean the data and set k = 1
+    X <- scale(X, scale = F)
+    k <- 1
+  }
+  n <- N - k    # effective sample size
+  c <- p / n    # concentration ratio
+  sample <- (t(X) %*% X) / n   
+  
+  # compute shrinkage target
+  samplevar <- diag(sample)
+  sqrtvar <- sqrt(samplevar)
+  rBar <- (sum(sample / outer(sqrtvar, sqrtvar)) - p) / (p * (p - 1))
+  target <- rBar * outer(sqrtvar, sqrtvar)
+  diag(target) <- samplevar
+  
+  # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
+  X2 <- X^2
+  sample2 <- (t(X2) %*% X2) / n   
+  piMat <- sample2 - sample^2
+  pihat <- sum(piMat)
+  
+  # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
+  gammahat <- norm(c(sample - target), type = "2")^2
+  
+  # diagonal part of the parameter that we call rho 
+  rho_diag <- sum(diag(piMat))
+  
+  # off-diagonal part of the parameter that we call rho 
+  term1 <- (t(X^3) %*% X) / n;
+  term2 <- rep.row(samplevar, p) * sample;
+  term2 <- t(term2)
+  thetaMat <- term1 - term2
+  diag(thetaMat) <- 0
+  rho_off <- rBar * sum(outer(1/sqrtvar, sqrtvar) * thetaMat)
+  
+  # compute shrinkage intensity
+  rhohat <- rho_diag + rho_off
+  kappahat <- (pihat - rhohat) / gammahat
+  shrinkage <- max(0, min(1, kappahat / n))
+  
+  # compute shrinkage estimator
+  sigmahat <- shrinkage * target + (1 - shrinkage) * sample
 }
 
-ls_diag_covariance <- function(X, k = -1) {
+ls_mkt_covariance <- function(X, k = -1) {
   dim.X <- dim(X)
   N <- dim.X[1]
   p <- dim.X[2]
@@ -180,6 +236,103 @@ ls_diag_covariance <- function(X, k = -1) {
   
   # compute shrinkage estimator
   sigmahat <- shrinkage * target + (1 - shrinkage) * sample
+}
+
+nls_gis_covariance <- function(X, k = -1) {
+  dim.X <- dim(X)
+  N <- dim.X[1]
+  p <- dim.X[2]
+  if (k < 0) {    # demean the data and set k = 1
+    X <- scale(X, scale = F)
+    k <- 1
+  }
+  n <- N - k    # effective sample size
+  c <- p / n    # concentration ratio
+  sample <- (t(X) %*% X) / n    # sample covariance matrix    
+  sample <- (t(sample) + sample) / 2   # enforce symmetry (even more)
+  spectral <- eigen(sample, symmetric = T)    # spectral decomposition
+  lambda <- spectral$values[p:1]    # sort eigenvalues in ascending order
+  u <- spectral$vectors[,p:1]    # eigenvectors follow their eigenvalues
+  h <- min(c^2, 1/c^2)^0.35 / p^0.35    # smoothing parameter
+  invlambda <- 1 / lambda[max(1, p-n+1):p]    # inverse of non-null eigenvalues   
+  Lj <- rep.row(invlambda, min(p, n))    # like 1 / lambda_j
+  Lj.i <- Lj - t(Lj)    # like (1 / lambda_j) - (1 / lambda_i)
+  theta <- rowMeans(Lj * Lj.i / (Lj.i^2 + h^2 * Lj^2))    # smoothed Stein shrinker
+  Htheta <- rowMeans(Lj * (h * Lj) / (Lj.i^2 + h^2 * Lj^2)) # its conjugate
+  Atheta2 <- theta^2 + Htheta^2    # its squared amplitude
+  if (p <= n) {   # case where sample covariance matrix is not singular
+    delta <- (1 - c) * invlambda + 2 * c * invlambda * theta 
+    deltaLIS <- pmax(delta, min(invlambda))
+    deltaQIS <- 1 / ((1 - c)^2 * invlambda + 2 * c * (1 - c) * invlambda * theta +
+                 c^2 * invlambda * Atheta2)           
+  }
+  else {    # case where sample covariance matrix is singular
+    stop("p must be <= n for the Symmetrized Kullback-Leibler divergence")
+  }
+  sigmahat <- u %*% diag(sqrt(deltaQIS / deltaLIS)) %*% t(u)    #reconstruct covariance matrix
+}
+
+nls_lis_covariance <- function(X, k = -1) {
+  dim.X <- dim(X)
+  N <- dim.X[1]
+  p <- dim.X[2]
+  if (k < 0) {    # demean the data and set k = 1
+    X <- scale(X, scale = F)
+    k <- 1
+  }
+  n <- N - k    # effective sample size
+  c <- p / n    # concentration ratio
+  sample <- (t(X) %*% X) / n    # sample covariance matrix    
+  sample <- (t(sample) + sample) / 2   # enforce symmetry (even more)
+  spectral <- eigen(sample, symmetric = T)    # spectral decompositon
+  lambda <- spectral$values[p:1]    # sort eigenvalues in ascending order
+  u <- spectral$vectors[,p:1]    # eigenvectors follow their eigenvalues
+  h <- min(c^2, 1/c^2)^0.35 / p^0.35    # smoothing parameter
+  invlambda <- 1 / lambda[max(1, p-n+1):p]    # inverse of non-null eigenvalues   
+  Lj <- rep.row(invlambda, min(p, n))    # like 1 / lambda_j
+  Lj.i <- Lj - t(Lj)    # like (1 / lambda_j) - (1 / lambda_i)
+  theta <- rowMeans(Lj * Lj.i / (Lj.i^2 + h^2 * Lj^2))    # smoothed Stein shrinker
+  if (p <= n) {   # case where sample covariance matrix is not singular
+    delta <- (1 - c) * invlambda + 2 * c * invlambda * theta # shrunk inverse eigenvalues
+    deltaLIS <- pmax(delta, min(invlambda))
+  }
+  else {    # case where sample covariance matrix is singular
+    stop("p must be <= n for Stein''s loss")
+  }
+  sigmahat <- u %*% diag(1 / deltaLIS) %*% t(u)    #reconstruct covariance matrix
+}
+
+nls_qis_covariance <- function(X, k = -1) {
+  dim.X <- dim(X)
+  N <- dim.X[1]
+  p <- dim.X[2]
+  if (k < 0) {    # demean the data and set k = 1
+    X <- scale(X, scale = F)
+    k <- 1
+  }
+  n <- N - k    # effective sample size
+  c <- p / n    # concentration ratio
+  sample <- (t(X) %*% X) / n    # sample covariance matrix    
+  sample <- (t(sample) + sample) / 2   # enforce symmetry (even more)
+  spectral <- eigen(sample, symmetric = T)    # spectral decompositon
+  lambda <- spectral$values[p:1]    # sort eigenvalues in ascending order
+  u <- spectral$vectors[,p:1]    # eigenvectors follow their eigenvalues
+  h <- min(c^2, 1/c^2)^0.35 / p^0.35    # smoothing parameter
+  invlambda <- 1 / lambda[max(1, p-n+1):p]    # inverse of non-null eigenvalues   
+  Lj <- rep.row(invlambda, min(p, n))    # like 1 / lambda_j
+  Lj.i <- Lj - t(Lj)    # like (1 / lambda_j) - (1 / lambda_i)
+  theta <- rowMeans(Lj * Lj.i / (Lj.i^2 + h^2 * Lj^2))    # smoothed Stein shrinker
+  Htheta <- rowMeans(Lj * (h * Lj) / (Lj.i^2 + h^2 * Lj^2)) # its conjugate
+  Atheta2 <- theta^2 + Htheta^2    # its squared amplitude
+  if (p <= n)    # case where sample covariance matrix is not singular
+    delta <- 1 / ((1 - c)^2 * invlambda + 2 * c * (1 - c) * invlambda * theta +
+                 c^2 * invlambda * Atheta2)           # optimally shrunk eigenvalues
+  else {    # case where sample covariance matrix is singular
+    delta0 <- 1 / ((c - 1) * mean(invlambda))     # shrinkage of null eigenvalues
+    delta <- c(rep(delta0, p - n), 1 / (invlambda * Atheta2));
+  }
+  deltaQIS <- delta * (sum(lambda) / sum(delta))    # preserve trace
+  sigmahat <- u %*% diag(deltaQIS) %*% t(u)    #reconstruct covariance matrix
 }
 
 ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
