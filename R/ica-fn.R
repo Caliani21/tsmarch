@@ -130,6 +130,10 @@ ls_id_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     return(sigma)
 }
 
+rep.col <- function(x, n){
+  matrix(rep(x, times = n), ncol = n, byrow = F)
+}
+
 ls_diag_covariance <- function(X, k = -1) {
   dim.X <- dim(X)
   N <- dim.X[1]
@@ -141,11 +145,13 @@ ls_diag_covariance <- function(X, k = -1) {
   n <- N - k    # effective sample size
   c <- p / n    # concentration ratio
   sample <- (t(X) %*% X) / n   
-  id_p <- diag(p)
-  one_p <- matrix(rep(1, p^2), ncol = p)
   
   # compute shrinkage target
-  target <- diag(diag(sample))
+  Xmkt <- matrix(apply(X, 1, mean),ncol = 1)
+  covmkt <- as.vector((t(Xmkt) %*% X) / n)
+  varmkt <- c((t(Xmkt) %*% Xmkt) / n)
+  target <- outer(covmkt, covmkt) / varmkt
+  diag(target) <- diag(sample)
   
   # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
   X2 <- X^2
@@ -160,7 +166,12 @@ ls_diag_covariance <- function(X, k = -1) {
   rho_diag <- sum(diag(piMat))
   
   # off-diagonal part of the parameter that we call rho 
-  rho_off <- 0
+  temp <- X * rep.col(Xmkt, p)
+  v1 <- (1/n) * t(X2) %*% temp - rep.col(covmkt, p) * sample
+  roff1 <- sum(v1 * t(rep.col(covmkt, p))) / varmkt - sum(diag(v1) * covmkt) / varmkt
+  v3 <- (1/n) * t(temp) %*% temp - varmkt * sample
+  roff3 <- sum(v3 * (covmkt %*% t(covmkt))) / varmkt^2 - sum(diag(v3) * covmkt^2) / varmkt^2
+  rho_off <- 2 * roff1 - roff3
   
   # compute shrinkage intensity
   rhohat <- rho_diag + rho_off
