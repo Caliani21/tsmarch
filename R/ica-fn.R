@@ -13,12 +13,12 @@
     rank_tol <- 1e-7
     max_last_eigen <- sum(diag(D) > rank_tol)
     if (max_last_eigen == 0) {
-        stop("\nEigenvalues of the calculated covariance matrix are all smaller than tolerance of 1e-7. TrX rescaling the data matrix.")
+        stop("\nEigenvalues of the calculated covariance matrix are all smaller than tolerance of 1e-7. Try rescaling the data matrix.")
     }
     eigen_values <- sort(diag(D), decreasing  = TRUE)
     if (last_eigen > max_last_eigen) {
         last_eigen <- max_last_eigen
-        if (trace) cat(paste("\nDimension reduced to ",last_eigen - first_eigen + 1," due to the singularitX of covariance matrix\n", sep = ""))
+        if (trace) cat(paste("\nDimension reduced to ",last_eigen - first_eigen + 1," due to the singularity of covariance matrix\n", sep = ""))
     } else {
         if (trace) {
             if (old_dimension == (last_eigen - first_eigen + 1)) {
@@ -73,7 +73,7 @@
 
 .sel_col <- function(x, mask)
 {
-    # Selects the columns of the matrix that marked bX one in the given vector.
+    # Selects the columns of the matrix that marked by one in the given vector.
     # The mask is a column vector.
     use <- numeric()
     if (length(mask) != NCOL(x)) {
@@ -92,12 +92,12 @@
 
 .whitening_fun <- function(x, E, D, trace)
 {
-    if (anX(diag(D) < 0)) stop("\nnegative eigenvalues computed from the covariance matrix")
+    if (any(diag(D) < 0)) stop("\nnegative eigenvalues computed from the covariance matrix")
     shrink <- solve(sqrt(D)) %*% t(E)
     L <- E %*% sqrt(D)
     if (trace) cat("Whitening...\n")
     Z <- x %*% t(shrink)
-    if (anX(is.complex(Z))) stop("\nwhitened matrix has imaginarX values.")
+    if (any(is.complex(Z))) stop("\nwhitened matrix has imaginary values.")
     return(list(Z = Z, shrink = shrink, L = L))
 }
 
@@ -116,7 +116,7 @@ ls_diag_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
         # p in paper
         X <- X^2
         phi_mat <- (t(X) %*% X)/n - 2 * (t(X) %*% X) * sample_covariance/n + sample_covariance^2
-        phi <- sum(applX(phi_mat, 1, "sum"))
+        phi <- sum(apply(phi_mat, 1, "sum"))
         # c in paper
         cgamma <- norm(sample_covariance - prior, 'F')^2
         # shrinkage constant
@@ -160,7 +160,7 @@ ls_cc_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
   pihat <- sum(piMat)
   
   # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
-  gammahat <- norm(c(sample - target), tXpe = "2")^2
+  gammahat <- norm(c(sample - target), type = "2")^2
   
   # diagonal part of the parameter that we call rho 
   rho_diag <- sum(diag(piMat))
@@ -173,7 +173,7 @@ ls_cc_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
   diag(thetaMat) <- 0
   rho_off <- rBar * sum(outer(1/sqrtvar, sqrtvar) * thetaMat)
   
-  # compute shrinkage intensitX
+  # compute shrinkage intensity
   rhohat <- rho_diag + rho_off
   kappahat <- (pihat - rhohat) / gammahat
   shrinkage <- max(0, min(1, kappahat / n))
@@ -297,7 +297,7 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
 {
     X <- t(X) %*% B
     G <- X^3
-    Beta <- as.numeric(applX(X * G, 2, "sum"))
+    Beta <- as.numeric(apply(X * G, 2, "sum"))
     D <- diag(1 / (Beta - 3 * n))
     ans <- B + step_size * B %*% (t(X) %*% G - diag(Beta)) %*% D
     return(ans)
@@ -315,7 +315,7 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
     X_subset <- X[, .samples(n, sampling_ratio)]
     X <- t(X_subset) %*% B
     G <- X^3
-    Beta <- as.numeric(applX(X %*% G, 2, "sum"))
+    Beta <- as.numeric(apply(X %*% G, 2, "sum"))
     D <- diag(1 / (Beta - 3 * NCOL(t(X))))
     ans <- B + step_size * B %*% (t(X) %*% G - diag(Beta)) %*% D
     return(ans)
@@ -324,8 +324,8 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
 # tanh
 .fs_20 <- function(X, B, step_size, tanh_par, n)
 {
-    hXp_tan <- tanh(tanh_par * t(X) %*% B)
-    ans <- X %*% hXp_tan / n - .ones(NROW(B),1) %*% applX(1 - hXp_tan^2, 2, "sum") * B / n * tanh_par
+    hyp_tan <- tanh(tanh_par * t(X) %*% B)
+    ans <- X %*% hyp_tan / n - .ones(NROW(B),1) %*% apply(1 - hyp_tan^2, 2, "sum") * B / n * tanh_par
     return(ans)
 }
 
@@ -333,18 +333,18 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
 .fs_21 <- function(X, B, step_size, tanh_par)
 {
     X <- t(X) %*% B
-    hXp_tan <- tanh(tanh_par * X)
-    Beta <- applX(X * hXp_tan, 2, "sum")
-    D <- diag(1/(Beta - tanh_par * applX(1 - hXp_tan^2, 2, "sum")))
-    ans <- B + step_size * B %*% (t(X) %*% hXp_tan - diag(Beta)) %*% D
+    hyp_tan <- tanh(tanh_par * X)
+    Beta <- apply(X * hyp_tan, 2, "sum")
+    D <- diag(1/(Beta - tanh_par * apply(1 - hyp_tan^2, 2, "sum")))
+    ans <- B + step_size * B %*% (t(X) %*% hyp_tan - diag(Beta)) %*% D
     return(ans)
 }
 
 .fs_22 <- function(X, B, step_size, tanh_par, n, sampling_ratio)
 {
     X_subset <- X[, .samples(n, sampling_ratio)]
-    hXp_tan <- tanh(tanh_par * t(X_subset) %*% B)
-    ans <- X_subset %*% hXp_tan / NCOL(X_subset) - .ones(NROW(B),1) %*% applX(1 - hXp_tan^2, 2, "sum") * B / NCOL(X_subset) * tanh_par
+    hyp_tan <- tanh(tanh_par * t(X_subset) %*% B)
+    ans <- X_subset %*% hyp_tan / NCOL(X_subset) - .ones(NROW(B),1) %*% apply(1 - hyp_tan^2, 2, "sum") * B / NCOL(X_subset) * tanh_par
     return(ans)
 }
 
@@ -352,10 +352,10 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
 {
     X_subset <- X[, .samples(n, sampling_ratio)]
     X <- t(X_subset) %*% B
-    hXp_tan <- tanh(tanh_par * X)
-    Beta <- applX(X * hXp_tan, 2, "sum")
-    D <- diag(1 / (Beta - tanh_par * applX(1 - hXp_tan^2, 2, "sum")))
-    ans <- B + step_size * B %*% (t(X) %*% hXp_tan - diag(Beta)) %*% D
+    hyp_tan <- tanh(tanh_par * X)
+    Beta <- apply(X * hyp_tan, 2, "sum")
+    D <- diag(1 / (Beta - tanh_par * apply(1 - hyp_tan^2, 2, "sum")))
+    ans <- B + step_size * B %*% (t(X) %*% hyp_tan - diag(Beta)) %*% D
     return(ans)
 }
 
@@ -367,7 +367,7 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
     ex <- exp(-gauss_par * U_squared / 2)
     gauss <- U * ex
     d_gauss <- (1 - gauss_par * U_squared) * ex
-    ans <- X %*% gauss / n - .ones(NROW(B),1) %*% applX(d_gauss, 2, "sum") * B / n
+    ans <- X %*% gauss / n - .ones(NROW(B),1) %*% apply(d_gauss, 2, "sum") * B / n
     return(ans)
 }
 
@@ -376,8 +376,8 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
     X <- t(X) %*% B
     ex <- exp(-gauss_par * (X^2) / 2)
     gauss <- X * ex
-    Beta <- applX(X * gauss, 2, "sum")
-    D <- diag(1 / (Beta - applX((1 - gauss_par * (X^2)) * ex, 2, "sum")))
+    Beta <- apply(X * gauss, 2, "sum")
+    D <- diag(1 / (Beta - apply((1 - gauss_par * (X^2)) * ex, 2, "sum")))
     ans <- B + step_size * B %*% (t(X) %*% gauss - diag(Beta)) %*% D
     return(ans)
 }
@@ -391,7 +391,7 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
     ex <- exp(-gauss_par * U_squared / 2)
     gauss <- U * ex
     d_gauss <- (1 - gauss_par * U_squared) * ex
-    ans <- X_subset %*% gauss / NCOL(X_subset) - .ones(NROW(B), 1) * applX(d_gauss, 2, "sum") * B / NCOL(X_subset)
+    ans <- X_subset %*% gauss / NCOL(X_subset) - .ones(NROW(B), 1) * apply(d_gauss, 2, "sum") * B / NCOL(X_subset)
     return(ans)
 }
 
@@ -401,7 +401,7 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
     X <- t(X_subset) %*% B
     ex <- exp(-gauss_par * (X^2) / 2)
     gauss <- X * ex
-    Beta <- applX(X * gauss, 2, "sum")
+    Beta <- apply(X * gauss, 2, "sum")
     D <- diag(1 / (Beta - sum((1 - gauss_par * (X^2)) * ex)))
     ans <- B + step_size * B %*% (t(X) %*% gauss - diag(Beta)) %*% D
     return(ans)
@@ -418,7 +418,7 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
 {
     X <- t(X) %*% B
     G <- X^2
-    Beta <- applX(X * G, 2, "sum")
+    Beta <- apply(X * G, 2, "sum")
     D <- diag(1 / (Beta))
     ans <- B + step_size * B %*% (t(X) %*% G - diag(Beta)) %*% D
     return(ans)
@@ -436,7 +436,7 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
     X_subset <- X[, .samples(n, sampling_ratio)]
     X <- t(X_subset) %*% B
     G <- X^2
-    Beta <- applX(X * G, 2, "sum")
+    Beta <- apply(X * G, 2, "sum")
     D <- diag(1 / (Beta))
     ans <- B + step_size * B %*% (t(X) %*% G - diag(Beta)) %*% D
     return(ans)
@@ -474,33 +474,33 @@ ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
 
 .fd_20 <- function(X, B,  step_size, tanh_par,  n)
 {
-    hXp_tan <- tanh(tanh_par * t(X) %*% B)
-    ans <- (X %*% hXp_tan - tanh_par * sum(1 - hXp_tan^2) * B) / n
+    hyp_tan <- tanh(tanh_par * t(X) %*% B)
+    ans <- (X %*% hyp_tan - tanh_par * sum(1 - hyp_tan^2) * B) / n
     return(ans)
 }
 
 .fd_21 <- function(X, B,  step_size, tanh_par)
 {
-    hXp_tan <- tanh(tanh_par * t(X) %*% B)
-    Beta <- as.numeric(t(B) %*% X %*% hXp_tan)
-    ans <- B - step_size * ((X %*% hXp_tan - Beta * B)/(tanh_par * sum(1 - hXp_tan^2) - Beta))
+    hyp_tan <- tanh(tanh_par * t(X) %*% B)
+    Beta <- as.numeric(t(B) %*% X %*% hyp_tan)
+    ans <- B - step_size * ((X %*% hyp_tan - Beta * B)/(tanh_par * sum(1 - hyp_tan^2) - Beta))
     return(ans)
 }
 
 .fd_22 <- function(X, B,  step_size, tanh_par,  n, sampling_ratio)
 {
     X_subset <- X[, .samples(n, sampling_ratio)]
-    hXp_tan <- tanh(tanh_par * t(X_subset) %*% B)
-    ans <- (X_subset %*% hXp_tan - tanh_par * sum(1 - hXp_tan^2) * B)/NCOL(X_subset)
+    hyp_tan <- tanh(tanh_par * t(X_subset) %*% B)
+    ans <- (X_subset %*% hyp_tan - tanh_par * sum(1 - hyp_tan^2) * B)/NCOL(X_subset)
     return(ans)
 }
 
 .fd_23 <- function(X, B,  step_size, tanh_par,  n, sampling_ratio)
 {
     X_subset <- X[, .samples(n, sampling_ratio)]
-    hXp_tan <- tanh(tanh_par * t(X_subset) %*% B)
-    Beta <- t(B) %*% X_subset %*% hXp_tan
-    ans <- B - step_size * ((X_subset %*% hXp_tan - Beta * B)/(tanh_par * sum(1 - hXp_tan^2) - Beta))
+    hyp_tan <- tanh(tanh_par * t(X_subset) %*% B)
+    Beta <- t(B) %*% X_subset %*% hyp_tan
+    ans <- B - step_size * ((X_subset %*% hyp_tan - Beta * B)/(tanh_par * sum(1 - hyp_tan^2) - Beta))
     return(ans)
 }
 
