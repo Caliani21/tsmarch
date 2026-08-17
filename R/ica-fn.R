@@ -139,7 +139,7 @@ ls_cc_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     n <- NROW(X)
   }
   sample_covariance <- crossprod(X)/n
-  s_var <- diag(sample_cov)
+  s_var <- diag(sample_covariance)
   s_std <- sqrt(s_var)
   s_std_mat <- tcrossprod(s_std)
   rBar <- (sum(sample_covariance/s_std_mat)-p)/(p*(p-1))
