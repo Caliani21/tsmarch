@@ -5,7 +5,7 @@
     covariance_matrix <- switch(pca_cov,
                                 "ML" = (t(Y) %*% Y)/dim(Y)[1],
                                 "LS-ID" = ls_id_covariance(Y, demean = FALSE, trace = trace, ...),
-                                "LS-DIAG" = ls_diag_covariance(Y, ...),
+                                "LS-DIAG" = ls_diag_covariance(Y, k = dim(Y)[2] + 1,...),
                                 "EWMA" = ewma_covariance(Y, demean = FALSE, ...))
     ed <- eigen(covariance_matrix)
     D <- diag(ed$values)
