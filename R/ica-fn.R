@@ -130,33 +130,36 @@ ls_diag_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     return(sigma)
 }
 
-ls_cc_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
+ls_cc_covariance <- function(X, shrink = -1, demean = FALSE, trace = FALSE) {
   p <- NCOL(X)
-  if(demean) {
+  if (demean) {
     X <- sweep(X, 2, colMeans(X), FUN = "-")
     n <- NROW(X) - 1
   } else {
     n <- NROW(X)
   }
-  sample_covariance <- crossprod(X)/n
+  sample_covariance <- crossprod(X) / n
   s_var <- diag(sample_covariance)
   s_std <- sqrt(s_var)
   s_std_mat <- tcrossprod(s_std)
-  rBar <- (sum(sample_covariance/s_std_mat)-p)/(p*(p-1))
-  prior <- rBar*s_std_mat
+  rBar <- (sum(sample_covariance / s_std_mat) - p) / (p * (p - 1))
+  rBar <- max(rBar, -1 / (p - 1) + 1e-4)
+  prior <- rBar * s_std_mat
   diag(prior) <- s_var
-  if(shrink == -1) {
-    piMat <- crossprod(X^2)/n - sample_covariance^2
-    thetaMat <- crossprod(X^3, X)/n - sample_covariance*s_var
+  if (shrink == -1) {
+    piMat <- crossprod(X^2) / n - sample_covariance^2
+    thetaMat <- crossprod(X^3, X) / n - sample_covariance * s_var
     diag(thetaMat) <- 0
-    rhohat <- sum(diag(piMat)) + rBar*sum(tcrossprod(1/s_std, s_std)*thetaMat)
-    shrinkage <- max(0, min(1, (sum(piMat)-rhohat)/sum((sample_covariance-prior)^2)/n))
-    if(trace) cat(sprintf("LS-CC Shrinkage: %f\n", shrinkage))
+    inv_s_std <- ifelse(s_std < 1e-12, 0, 1 / s_std) 
+    rhohat <- sum(diag(piMat)) + rBar * sum(tcrossprod(inv_s_std, s_std) * thetaMat)
+    cgamma <- sum((sample_covariance - prior)^2)
+    kappa <- if (cgamma < 1e-12) 1 else (sum(piMat) - rhohat) / cgamma
+    shrinkage <- max(0, min(1, kappa / n))
+    if (trace) cat(sprintf("LS-CC Shrinkage: %f\n", shrinkage))
   } else {
-    shrinkage <- shrink
+    shrinkage <- max(0, min(1, shrink)) 
   }
-  sigma <- shrinkage * prior + (1 - shrinkage) * sample_covariance
-  return(sigma)
+  return(shrinkage * prior + (1 - shrinkage) * sample_covariance)
 }
 
 ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
