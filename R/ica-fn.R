@@ -5,7 +5,7 @@
     covariance_matrix <- switch(pca_cov,
                                 "ML" = (t(Y) %*% Y)/dim(Y)[1],
                                 "LS-DIAG" = ls_diag_covariance(Y, demean = FALSE, trace = trace, ...),
-                                "LS-CC" = ls_cc_covariance(Y, demean = FALSE, trace = trace, ...),
+                                "LS-CC" = ls_cc_covariance(Y, ...),
                                 "EWMA" = ewma_covariance(Y, demean = FALSE, ...))
     ed <- eigen(covariance_matrix)
     D <- diag(ed$values)
@@ -47,7 +47,7 @@
     selected_cols <- lower_cols & higher_cols
 
     # print some info for the user
-    if (trace) cat(paste("selected ", sum(selected_cols), "dimensions.\n", sep = ""))
+    if () cat(paste("selected ", sum(selected_cols), "dimensions.\n", sep = ""))
 
     if (sum(selected_cols) != (last_eigen - first_eigen + 1)) {
         stop("\nselected wrong number of dimensions.\n")
