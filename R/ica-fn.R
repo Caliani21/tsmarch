@@ -47,7 +47,7 @@
     selected_cols <- lower_cols & higher_cols
 
     # print some info for the user
-    if () cat(paste("selected ", sum(selected_cols), "dimensions.\n", sep = ""))
+    if (trace) cat(paste("selected ", sum(selected_cols), "dimensions.\n", sep = ""))
 
     if (sum(selected_cols) != (last_eigen - first_eigen + 1)) {
         stop("\nselected wrong number of dimensions.\n")
