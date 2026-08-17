@@ -131,35 +131,37 @@ ls_diag_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
 }
 
 ls_cc_covariance <- function(X, shrink = -1, demean = FALSE, trace = FALSE) {
-  p <- NCOL(X)
   if (demean) {
-    X <- sweep(X, 2, colMeans(X), FUN = "-")
-    n <- NROW(X) - 1
+    X <- scale(X, scale = FALSE)
+    k <- 1
   } else {
-    n <- NROW(X)
+    k <- 0
   }
-  sample_covariance <- crossprod(X) / n
-  s_var <- diag(sample_covariance)
+  p <- NCOL(X)
+  n <- NROW(X) - k
+  S <- (t(X) %*% X) / n
+  s_var <- diag(S)
   s_std <- sqrt(s_var)
-  s_std_mat <- tcrossprod(s_std)
-  rBar <- (sum(sample_covariance / s_std_mat) - p) / (p * (p - 1))
-  rBar <- max(rBar, -1 / (p - 1) + 1e-4)
-  prior <- rBar * s_std_mat
+  s_std[s_std == 0] <- 1e-12 
+  rBar <- (sum(S / outer(s_std, s_std)) - p) / (p * (p - 1))
+  prior <- rBar * outer(s_std, s_std)
   diag(prior) <- s_var
   if (shrink == -1) {
-    piMat <- crossprod(X^2) / n - sample_covariance^2
-    thetaMat <- crossprod(X^3, X) / n - sample_covariance * s_var
+    X2 <- X^2
+    S2 <- (t(X2) %*% X2) / n
+    piMat <- S2 - S^2
+    gammahat <- sum((S - prior)^2)
+    term1 <- (t(X^3) %*% X) / n
+    term2 <- t(matrix(s_var, p, p, byrow = TRUE) * S)
+    thetaMat <- term1 - term2
     diag(thetaMat) <- 0
-    inv_s_std <- ifelse(s_std < 1e-12, 0, 1 / s_std) 
-    rhohat <- sum(diag(piMat)) + rBar * sum(tcrossprod(inv_s_std, s_std) * thetaMat)
-    cgamma <- sum((sample_covariance - prior)^2)
-    kappa <- if (cgamma < 1e-12) 1 else (sum(piMat) - rhohat) / cgamma
-    shrinkage <- max(0, min(1, kappa / n))
+    rhohat <- sum(diag(piMat)) + rBar * sum(outer(1 / s_std, s_std) * thetaMat)
+    shrinkage <- max(0, min(1, ((sum(piMat) - rhohat) / gammahat) / n))
     if (trace) cat(sprintf("LS-CC Shrinkage: %f\n", shrinkage))
   } else {
-    shrinkage <- max(0, min(1, shrink)) 
+    shrinkage <- max(0, min(1, shrink))
   }
-  return(shrinkage * prior + (1 - shrinkage) * sample_covariance)
+  return(shrinkage * prior + (1 - shrinkage) * S)
 }
 
 ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
