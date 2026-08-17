@@ -4,8 +4,8 @@
     Y <- X
     covariance_matrix <- switch(pca_cov,
                                 "ML" = (t(Y) %*% Y)/dim(Y)[1],
-                                "LS-DIAG" = ls_diag_covariance(Y, demean = FALSE, trace = trace, ...),
-                                "LS-CC" = ls_cc_covariance(Y, ...),
+                                "LS-ID" = ls_id_covariance(Y, demean = FALSE, trace = trace, ...),
+                                "LS-DIAG" = ls_diag_covariance(Y, ...),
                                 "EWMA" = ewma_covariance(Y, demean = FALSE, ...))
     ed <- eigen(covariance_matrix)
     D <- diag(ed$values)
@@ -101,7 +101,7 @@
     return(list(Z = Z, K = K, L = L))
 }
 
-ls_diag_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
+ls_id_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     n <- NROW(X)
     m <- NCOL(X)
     mu <- colMeans(X)
@@ -130,11 +130,7 @@ ls_diag_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
     return(sigma)
 }
 
-rep.row <- function(x, n){
-  matrix(rep(x, each = n), nrow = n)
-}
-
-ls_cc_covariance <- function(X, k = -1) {
+ls_diag_covariance <- function(X, k = -1) {
   dim.X <- dim(X)
   N <- dim.X[1]
   p <- dim.X[2]
@@ -145,13 +141,11 @@ ls_cc_covariance <- function(X, k = -1) {
   n <- N - k    # effective sample size
   c <- p / n    # concentration ratio
   sample <- (t(X) %*% X) / n   
+  id_p <- diag(p)
+  one_p <- matrix(rep(1, p^2), ncol = p)
   
   # compute shrinkage target
-  samplevar <- diag(sample)
-  sqrtvar <- sqrt(samplevar)
-  rBar <- (sum(sample / outer(sqrtvar, sqrtvar)) - p) / (p * (p - 1))
-  target <- rBar * outer(sqrtvar, sqrtvar)
-  diag(target) <- samplevar
+  target <- diag(diag(sample))
   
   # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
   X2 <- X^2
@@ -166,12 +160,7 @@ ls_cc_covariance <- function(X, k = -1) {
   rho_diag <- sum(diag(piMat))
   
   # off-diagonal part of the parameter that we call rho 
-  term1 <- (t(X^3) %*% X) / n;
-  term2 <- rep.row(samplevar, p) * sample;
-  term2 <- t(term2)
-  thetaMat <- term1 - term2
-  diag(thetaMat) <- 0
-  rho_off <- rBar * sum(outer(1/sqrtvar, sqrtvar) * thetaMat)
+  rho_off <- 0
   
   # compute shrinkage intensity
   rhohat <- rho_diag + rho_off
@@ -180,8 +169,6 @@ ls_cc_covariance <- function(X, k = -1) {
   
   # compute shrinkage estimator
   sigmahat <- shrinkage * target + (1 - shrinkage) * sample
-
-  return(sigmahat)
 }
 
 ewma_covariance <- function(X, lambda = 0.96, demean = FALSE)
