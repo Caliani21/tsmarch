@@ -5,11 +5,11 @@
     covariance_matrix <- switch(pca_cov,
                                 "Sample" = (t(Y) %*% Y)/dim(Y)[1],
                                 "LS-ID" = ls_id_covariance(Y, demean = FALSE, trace = trace, ...),
-                                "LS-CC" = ls_cc_covariance(Y, k = dim(Y)[2] + 1,...),
-                                "LS-MKT" = ls_mkt_covariance(Y, k = dim(Y)[2] + 1,...),
-                                "NLS-GIS" = nls_gis_covariance(Y, k = dim(Y)[2] + 1,...),
-                                "NLS-LIS" = nls_lis_covariance(Y, k = dim(Y)[2] + 1,...),
-                                "NLS-QIS" = nls_qis_covariance(Y, k = dim(Y)[2] + 1,...),
+                                "LS-CC" = ls_cc_covariance(Y, k = 0,...),
+                                "LS-MKT" = ls_mkt_covariance(Y, k = 0,...),
+                                "NLS-GIS" = nls_gis_covariance(Y, k = 0,...),
+                                "NLS-LIS" = nls_lis_covariance(Y, k = 0,...),
+                                "NLS-QIS" = nls_qis_covariance(Y, k = 0,...),
                                 "EWMA" = ewma_covariance(Y, demean = FALSE, ...))
     ed <- eigen(covariance_matrix)
     D <- diag(ed$values)
