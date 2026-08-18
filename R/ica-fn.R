@@ -4,8 +4,10 @@
     Y <- X
     covariance_matrix <- switch(pca_cov,
                                 "Sample" = (t(Y) %*% Y)/dim(Y)[1],
-                                "LS-ID" = ls_id_covariance(Y, demean = FALSE, trace = trace, ...),
-                                "LS-CC" = ls_cc_covariance(Y, k = 0,...),
+                                "LS-ID" = ls_id_covariance(Y, k = 0, ...),
+                                "LS-2P" = ls_2p_covariance(Y, k = 0, ...),
+                                "LS-CC" = ls_cc_covariance(Y, k = 0,...), 
+                                "LS-DIAG" = ls_diag_covariance(Y, k = 0,...),
                                 "LS-MKT" = ls_mkt_covariance(Y, k = 0,...),
                                 "NLS-GIS" = nls_gis_covariance(Y, k = 0,...),
                                 "NLS-LIS" = nls_lis_covariance(Y, k = 0,...),
@@ -113,33 +115,91 @@ rep.col <- function(x, n){
   matrix(rep(x, times = n), ncol = n, byrow = F)
 }
 
-ls_id_covariance <- function(X, shrink = -1, demean = FALSE, trace) {
-    n <- NROW(X)
-    m <- NCOL(X)
-    mu <- colMeans(X)
-    if (demean) X <- sweep(X, 2, mu, FUN = "-")
-    # compute sample covariance matrix
-    sample_covariance <- (t(X) %*% X)/n
-    # compute prior
-    mean_var <- mean(diag(sample_covariance))
-    prior <- mean_var * diag(1, m, m)
-    if (shrink == -1) {
-        # compute shrinkage parameters
-        # p in paper
-        Y <- X^2
-        phi_mat <- (t(Y) %*% Y)/n - 2 * (t(X) %*% X) * sample_covariance/n + sample_covariance^2
-        phi <- sum(apply(phi_mat, 1, "sum"))
-        # c in paper
-        cgamma <- norm(sample_covariance - prior, 'F')^2
-        # shrinkage constant
-        kappa <- phi/cgamma
-        shrinkage <- max(0, min(1, kappa/n))
-        if (trace) cat(paste("shrinkage parameter: ", shrinkage, "\n", sep = ""))
-    } else {
-        shrinkage <- shrink
-    }
-    sigma <- shrinkage * prior + (1 - shrinkage) * sample_covariance
-    return(sigma)
+ls_id_covariance <- function(X, k = -1) {
+  dim.X <- dim(X)
+  N <- dim.X[1]
+  p <- dim.X[2]
+  if (k < 0) {    # demean the data and set k = 1
+    X <- scale(X, scale = F)
+    k <- 1
+  }
+  n <- N - k    # effective sample size
+  c <- p / n    # concentration ratio
+  sample <- (t(X) %*% X) / n   
+  
+  # compute shrinkage target
+  meanvar <- mean(diag(sample))
+  target <- meanvar * diag(p)
+  
+  # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
+  X2 <- X^2
+  sample2 <- (t(X2) %*% X2) / n   
+  piMat <- sample2 - sample^2
+  pihat <- sum(piMat)
+  
+  # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
+  gammahat <- norm(c(sample - target), type = "2")^2
+  
+  # diagonal part of the parameter that we call rho 
+  rho_diag <- 0
+  
+  # off-diagonal part of the parameter that we call rho 
+  rho_off <- 0
+  
+  # compute shrinkage intensity
+  rhohat <- rho_diag + rho_off
+  kappahat <- (pihat - rhohat) / gammahat
+  shrinkage <- max(0, min(1, kappahat / n))
+  
+  # compute shrinkage estimator
+  sigmahat <- shrinkage * target + (1 - shrinkage) * sample
+}
+
+ls_2p_covariance <- function(X, k = -1) {
+  dim.X <- dim(X)
+  N <- dim.X[1]
+  p <- dim.X[2]
+  if (k < 0) {    # demean the data and set k = 1
+    X <- scale(X, scale = F)
+    k <- 1
+  }
+  n <- N - k    # effective sample size
+  c <- p / n    # concentration ratio
+  sample <- (t(X) %*% X) / n   
+  id_p <- diag(p)
+  one_p <- matrix(rep(1, p^2), ncol = p)
+  
+  # compute shrinkage target
+  meanvar <- mean(diag(sample))
+  meancovar <- sum(sample - diag(diag(sample))) / (p * (p- 1))
+  target <- meanvar * id_p + meancovar * (one_p - id_p)
+  
+  # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
+  X2 <- X^2
+  sample2 <- (t(X2) %*% X2) / n   
+  piMat <- sample2 - sample^2
+  pihat <- sum(piMat)
+  
+  # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
+  gammahat <- norm(c(sample - target), type = "2")^2
+  
+  # diagonal part of the parameter that we call rho 
+  rho_diag <- sum(sample2) / p - (sum(diag((sample))))^2 / p
+  
+  # off-diagonal part of the parameter that we call rho 
+  sum1 <- apply(X, 1, sum)
+  sum2 <- apply(X2, 1, sum)
+  rho_off1 <- sum((sum1^2 - sum2)^2)/ p / n
+  rho_off2 <- (sum(sample) - sum(diag(sample)))^2 / p
+  rho_off <- (rho_off1 - rho_off2) / (p - 1)
+  
+  # compute shrinkage intensity
+  rhohat <- rho_diag + rho_off
+  kappahat <- (pihat - rhohat) / gammahat
+  shrinkage <- max(0, min(1, kappahat / n))
+  
+  # compute shrinkage estimator
+  sigmahat <- shrinkage * target + (1 - shrinkage) * sample
 }
 
 ls_cc_covariance <- function(X, k = -1) {
@@ -180,6 +240,47 @@ ls_cc_covariance <- function(X, k = -1) {
   thetaMat <- term1 - term2
   diag(thetaMat) <- 0
   rho_off <- rBar * sum(outer(1/sqrtvar, sqrtvar) * thetaMat)
+  
+  # compute shrinkage intensity
+  rhohat <- rho_diag + rho_off
+  kappahat <- (pihat - rhohat) / gammahat
+  shrinkage <- max(0, min(1, kappahat / n))
+  
+  # compute shrinkage estimator
+  sigmahat <- shrinkage * target + (1 - shrinkage) * sample
+}
+
+ls_diag_covariance <- function(X, k = -1) {
+  dim.X <- dim(X)
+  N <- dim.X[1]
+  p <- dim.X[2]
+  if (k < 0) {    # demean the data and set k = 1
+    X <- scale(X, scale = F)
+    k <- 1
+  }
+  n <- N - k    # effective sample size
+  c <- p / n    # concentration ratio
+  sample <- (t(X) %*% X) / n   
+  id_p <- diag(p)
+  one_p <- matrix(rep(1, p^2), ncol = p)
+  
+  # compute shrinkage target
+  target <- diag(diag(sample))
+  
+  # estimate the parameter that we call pi in Ledoit and Wolf (2003, JEF)
+  X2 <- X^2
+  sample2 <- (t(X2) %*% X2) / n   
+  piMat <- sample2 - sample^2
+  pihat <- sum(piMat)
+  
+  # estimate the parameter that we call gamma in Ledoit and Wolf (2003, JEF)
+  gammahat <- norm(c(sample - target), type = "2")^2
+  
+  # diagonal part of the parameter that we call rho 
+  rho_diag <- sum(diag(piMat))
+  
+  # off-diagonal part of the parameter that we call rho 
+  rho_off <- 0
   
   # compute shrinkage intensity
   rhohat <- rho_diag + rho_off
